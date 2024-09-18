@@ -3,9 +3,7 @@ name: Ensure Mandatory Code Owners Approve
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  # schedule:
-  #   - cron: '*/30 * * * *'  # Run every 30 minutes to check for approvals
-
+  
 jobs:
   codeowners-approval:
     runs-on: ubuntu-latest
@@ -18,7 +16,6 @@ jobs:
       - name: Get Codeowners data using Bash
         id: get-codeowners
         run: |
-          # Define variables for the owner, repo, and path
           OWNER=${{ github.repository_owner }}
           REPO=$(basename ${{ github.repository }})
           FILE_PATH=".github/CODEOWNERS"
@@ -31,39 +28,51 @@ jobs:
           CONTENT=$(echo "$RESPONSE" | jq -r '.content' | base64 --decode)
 
           # Output the content to be used in later steps
-          echo "$CONTENT"
+          echo "CODEOWNERS content: $CONTENT"
           echo "::set-output name=content::$CONTENT"
 
       # Step 3: Check approvals from mandatory Code Owners
       - name: Check Approvals from Code Owners
         id: check-approvals
         run: |
-          # Extract mandatory users from CODEOWNERS file
           CODEOWNERS=($(echo "${{ steps.get-codeowners.outputs.content }}" | grep -o '@[^ ]*' | sed 's/@//g'))
+
+          # Debugging: Print CODEOWNERS list
+          echo "CODEOWNERS list: ${CODEOWNERS[@]}"
 
           # Fetch the list of approved users from the GitHub API
           APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
           | jq -r '.[] | select(.state == "APPROVED") | .user.login')
 
+          # Debugging: Print raw APPROVED_USERS
+          echo "Raw Approved users: $APPROVED_USERS"
+
           # Remove duplicates from APPROVED_USERS
           UNIQUE_APPROVED_USERS=$(echo "$APPROVED_USERS" | sort | uniq)
 
+          # Debugging: Print UNIQUE_APPROVED_USERS
           echo "Unique Approved users: $UNIQUE_APPROVED_USERS"
 
           # Initialize approval count for mandatory code owners
           APPROVAL_COUNT=0
           REQUIRED_APPROVALS=${#CODEOWNERS[@]}  # Number of mandatory approvals
 
+          # Debugging: Print required approvals
+          echo "Required mandatory approvals: $REQUIRED_APPROVALS"
+
           # Loop over code owners to check if they've approved
           for owner in "${CODEOWNERS[@]}"; do
+            echo "Checking approval for: $owner"
             if echo "$UNIQUE_APPROVED_USERS" | grep -qw "$owner"; then
               ((APPROVAL_COUNT++))
+              echo "$owner has approved"
+            else
+              echo "$owner has NOT approved"
             fi
           done
 
           echo "Number of mandatory code owner approvals: $APPROVAL_COUNT"
-          echo "Required mandatory approvals: $REQUIRED_APPROVALS"
 
           # Check if all mandatory code owners have approved
           if [ "$APPROVAL_COUNT" -ne "$REQUIRED_APPROVALS" ]; then
