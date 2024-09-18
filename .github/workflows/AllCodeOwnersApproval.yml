@@ -82,7 +82,7 @@ jobs:
           echo "Normalized approved users: $NORMALIZED_APPROVED_USERS"
   
           # Check if the owner is in the list of approved users
-          if echo "$NORMALIZED_APPROVED_USERS" | grep -iwq "$owner"; then
+          if echo "$NORMALIZED_APPROVED_USERS" | grep -w "$owner"; then
              ((APPROVAL_COUNT++))
           echo "'$owner' has approved."
           else
