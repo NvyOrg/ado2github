@@ -40,10 +40,10 @@ jobs:
           CODEOWNERS=($(echo "${{ steps.get-codeowners.outputs.content }}" | grep -o '@[^ ]*' | sed 's/@//g'))
 
           # Fetch the list of approved users from GitHub API
-          APPROVED_USERS=$(curl -s -H "Authorization: token ***" \
-          "https://api.github.com/repos/nitya-v-yadav/ado2github/pulls/1/reviews" \
-           | jq -r '.[] | select(.state == "APPROVED") | .user.login' | sort | uniq)
-
+          APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
+          | jq -r '.[] | select(.state == "APPROVED") | .user.login')
+          
           echo "Approved users: $APPROVED_USERS"
 
           # Initialize approval count for mandatory code owners
