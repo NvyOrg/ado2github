@@ -3,7 +3,7 @@ name: Ensure Mandatory Code Owners Approve
 on:
   pull_request:
     types: [opened, synchronize, reopened]
- 
+  
 jobs:
   codeowners-approval:
     runs-on: ubuntu-latest
@@ -16,17 +16,15 @@ jobs:
       - name: Get Codeowners data using Bash
         id: get-codeowners
         run: |
+          # Define variables for the owner, repo, and path
           OWNER=${{ github.repository_owner }}
           REPO=$(basename ${{ github.repository }})
           FILE_PATH=".github/CODEOWNERS"
-
           # Make an API call to get the content of the CODEOWNERS file
           RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/$OWNER/$REPO/contents/$FILE_PATH")
-
           # Extract and decode the base64 content
           CONTENT=$(echo "$RESPONSE" | jq -r '.content' | base64 --decode)
-
           # Output the content to be used in later steps
           echo "CODEOWNERS content: $CONTENT"
           echo "::set-output name=content::$CONTENT"
@@ -37,7 +35,7 @@ jobs:
         run: |
           # Extract mandatory users from CODEOWNERS file, removing extra spaces and newlines
           CODEOWNERS=($(echo "${{ steps.get-codeowners.outputs.content }}" | grep -o '@[^ ]*' | sed 's/@//g' | tr -d '[:space:]'))
-
+          
           # Debugging: Print CODEOWNERS list
           echo "CODEOWNERS list: ${CODEOWNERS[@]}"
 
@@ -45,9 +43,15 @@ jobs:
           APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
           | jq -r '.[] | select(.state == "APPROVED") | .user.login' | sort -u)
-
+          
           # Debugging: Print raw APPROVED_USERS
           echo "Approved users: $APPROVED_USERS"
+
+          # Ensure APPROVED_USERS is normalized to handle spaces or newlines
+          APPROVED_USERS_ARRAY=($(echo "$APPROVED_USERS" | tr '\n' ' '))
+
+          # Debugging: Print normalized APPROVED_USERS
+          echo "Normalized Approved Users: ${APPROVED_USERS_ARRAY[@]}"
 
           # Initialize approval count for mandatory code owners
           APPROVAL_COUNT=0
@@ -56,35 +60,19 @@ jobs:
           # Debugging: Print required approvals
           echo "Required mandatory approvals: $REQUIRED_APPROVALS"
 
-          # # Loop over code owners to check if they've approved
-          # for owner in "${CODEOWNERS[@]}"; do
-          #   owner=$(echo "$owner" | tr -d '[:space:]')  # Trim any spaces
-          #   echo "Checking approval for: $owner"
-
-          #   if echo "$APPROVED_USERS" | grep -iwq "$owner"; then  # Case-insensitive comparison
-          #     ((APPROVAL_COUNT++))
-          #     echo "$owner has approved"
-          #   else
-          #     echo "$owner has NOT approved"
-          #   fi
-          # done
           # Loop over code owners to check if they've approved
           for owner in "${CODEOWNERS[@]}"; do
-          owner=$(echo "$owner" | tr -d '[:space:]')  # Trim any spaces/newlines from the owner name
-          echo "Checking approval for code owner: '$owner'"
+            owner=$(echo "$owner" | tr -d '[:space:]')  # Trim any spaces/newlines from the owner name
+            echo "Checking approval for code owner: '$owner'"
 
-          # Normalize approved users by trimming spaces/newlines
-           NORMALIZED_APPROVED_USERS=$(echo "$APPROVED_USERS" | tr -d '[:space:]')
-           echo "Normalized approved users: '$NORMALIZED_APPROVED_USERS'"
-
-          # Check if the owner is in the list of approved users
-           if echo "$NORMALIZED_APPROVED_USERS" | grep -iwq "$owner"; then
-            ((APPROVAL_COUNT++))
-             echo "'$owner' has approved."
-           else
-           echo "'$owner' has NOT approved."
-           fi
-           done
+            # Check if the owner is in the list of approved users
+            if [[ " ${APPROVED_USERS_ARRAY[@]} " =~ " $owner " ]]; then
+              ((APPROVAL_COUNT++))
+              echo "'$owner' has approved."
+            else
+              echo "'$owner' has NOT approved."
+            fi
+          done
 
           echo "Number of mandatory code owner approvals: $APPROVAL_COUNT"
 
@@ -95,3 +83,14 @@ jobs:
           else
             echo "All mandatory code owners have approved the PR. PR can be merged."
           fi
+
+      # Step 4: Optional Approvals Check (if needed)
+      - name: Optional Approvals Check (optional reviewers)
+        if: success()  # Only run this step if code owner approvals passed
+        run: |
+          echo "Optional reviewers can approve, but this step doesn't block the merge."
+
+      # Step 5: Approvals Check Passed
+      - name: Approvals Check Passed
+        if: success()
+        run: echo "PR is ready to merge after all mandatory code owners' approval."
