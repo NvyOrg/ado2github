@@ -28,7 +28,7 @@ jobs:
           CONTENT=$(echo "$RESPONSE" | jq -r '.content' | base64 --decode)
           # Output the content to be used in later steps
           echo "CODEOWNERS content: $CONTENT"
-          echo "{content}={$CONTENT}" >> $GITHUB_OUTPUT
+          echo "{name}={content}" >> $GITHUB_OUTPUT
           # echo "::set-output name=content::$CONTENT"
       # Step 3: Check approvals from mandatory Code Owners
       - name: Check Approvals from Code Owners
