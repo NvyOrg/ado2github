@@ -3,7 +3,9 @@ name: Ensure Mandatory Code Owners Approve
 on:
   pull_request:
     types: [opened, synchronize, reopened]
- 
+  # schedule:
+  #   - cron: '*/30 * * * *'  # Run every 30 minutes to check for approvals
+
 jobs:
   codeowners-approval:
     runs-on: ubuntu-latest
@@ -44,7 +46,10 @@ jobs:
           "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
           | jq -r '.[] | select(.state == "APPROVED") | .user.login')
 
-          echo "Approved users: $APPROVED_USERS"
+          # Remove duplicates from APPROVED_USERS
+          UNIQUE_APPROVED_USERS=$(echo "$APPROVED_USERS" | sort | uniq)
+
+          echo "Unique Approved users: $UNIQUE_APPROVED_USERS"
 
           # Initialize approval count for mandatory code owners
           APPROVAL_COUNT=0
@@ -52,7 +57,7 @@ jobs:
 
           # Loop over code owners to check if they've approved
           for owner in "${CODEOWNERS[@]}"; do
-            if echo "$APPROVED_USERS" | grep -qw "$owner"; then
+            if echo "$UNIQUE_APPROVED_USERS" | grep -qw "$owner"; then
               ((APPROVAL_COUNT++))
             fi
           done
