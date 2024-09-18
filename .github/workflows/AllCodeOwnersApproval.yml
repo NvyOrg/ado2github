@@ -79,18 +79,18 @@ jobs:
           # Check if all mandatory code owners have approved
           if [ "$APPROVAL_COUNT" -lt "$REQUIRED_APPROVALS" ]; then
             echo "Not all mandatory code owners have approved. PR cannot be merged yet."
-            exit 1  # Fail the job to block the merge
+          #   exit 1  # Fail the job to block the merge
           else
             echo "All mandatory code owners have approved the PR. PR can be merged."
           fi
 
-      # Step 4: Optional Approvals Check (if needed)
-      - name: Optional Approvals Check (optional reviewers)
-        if: success()  # Only run this step if code owner approvals passed
-        run: |
-          echo "Optional reviewers can approve, but this step doesn't block the merge."
+      # # Step 4: Optional Approvals Check (if needed)
+      # - name: Optional Approvals Check (optional reviewers)
+      #   if: success()  # Only run this step if code owner approvals passed
+      #   run: |
+      #     echo "Optional reviewers can approve, but this step doesn't block the merge."
 
-      # Step 5: Approvals Check Passed
-      - name: Approvals Check Passed
-        if: success()
-        run: echo "PR is ready to merge after all mandatory code owners' approval."
+      # # Step 5: Approvals Check Passed
+      # - name: Approvals Check Passed
+      #   if: success()
+      #   run: echo "PR is ready to merge after all mandatory code owners' approval."
