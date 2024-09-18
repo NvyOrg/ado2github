@@ -12,53 +12,61 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Step 2: Get Codeowners file content from the .github folder using Bash
-      - name: Get Codeowners data using Bash
+      # Step 2: Get Codeowners file content from the .github folder
+      - name: Get Codeowners data
         id: get-codeowners
-        run: |
-          # Define variables for the owner, repo, and path
-          OWNER=${{ github.repository_owner }}
-          REPO=$(basename ${{ github.repository }})
-          FILE_PATH=".github/CODEOWNERS"
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const response = await github.rest.repos.getContent({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              path: '.github/CODEOWNERS',  # Ensure CODEOWNERS is in this path
+            });
+            const content = Buffer.from(response.data.content, 'base64').toString('utf8');
+            return { content };
 
-          # Make an API call to get the content of the CODEOWNERS file
-          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/$OWNER/$REPO/contents/$FILE_PATH")
-
-          # Extract and decode the base64 content
-          CONTENT=$(echo "$RESPONSE" | jq -r '.content' | base64 --decode)
-
-          # Output the content to be used in later steps
-          echo "$CONTENT"
-          echo "::set-output name=content::$CONTENT"
-
-      # Step 3: Check approvals from mandatory Code Owners
+      # Step 3: Check approvals from Code Owners
       - name: Check Approvals from Code Owners
         id: check-approvals
         run: |
-          # Extract mandatory users from CODEOWNERS file
+          # Parse CODEOWNERS file and extract mandatory users (handles '@' symbol correctly)
           CODEOWNERS=($(echo "${{ steps.get-codeowners.outputs.content }}" | grep -o '@[^ ]*' | sed 's/@//g'))
 
-          # Fetch the list of approved users from GitHub API
-          APPROVED_USERS=$(curl -s -H "Authorization: token ***" \
-          "https://api.github.com/repos/nitya-v-yadav/ado2github/pulls/1/reviews" \
-          | jq -r 'map(select(.state == "APPROVED")) | map(.user.login) | unique | .[]')
-          # APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          # "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
-          # | jq -r '.[] | select(.state == "APPROVED") | .user.login')
-          
-          echo "Approved users: $APPROVED_USERS"
-
-          # Initialize approval count for mandatory code owners
-          APPROVAL_COUNT=0
-          REQUIRED_APPROVALS=${#CODEOWNERS[@]}  # Number of mandatory approvals
-
-          # Loop over code owners to check if they've approved
+          # Debug: Print code owners
+          echo "Codeowners list:"
           for owner in "${CODEOWNERS[@]}"; do
+            echo "$owner"
+          done
+
+          # Fetch the list of approved users from the GitHub API
+          APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
+          | jq -r '.[] | select(.state == "APPROVED") | .user.login')
+
+          # Debug: Print approved users
+          echo "Approved users:"
+          echo "$APPROVED_USERS"
+
+          # Normalize CODEOWNERS (convert to lowercase and trim spaces)
+          CODEOWNERS=$(echo "${CODEOWNERS[@]}" | tr ' ' '\n' | tr '[:upper:]' '[:lower:]' | xargs)
+
+          # Normalize APPROVED_USERS (convert to lowercase and trim spaces)
+          APPROVED_USERS=$(echo "$APPROVED_USERS" | tr '[:upper:]' '[:lower:]' | xargs)
+
+          # Initialize approval count
+          APPROVAL_COUNT=0
+          REQUIRED_APPROVALS=$(echo "$CODEOWNERS" | wc -l)  # Count the number of mandatory code owners
+
+          # Loop over code owners to check if they approved
+          while IFS= read -r owner; do
+            owner=$(echo "$owner" | xargs)  # Trim spaces around the owner name
             if echo "$APPROVED_USERS" | grep -qw "$owner"; then
               ((APPROVAL_COUNT++))
+            else
+              echo "$owner has NOT approved."
             fi
-          done
+          done <<< "$CODEOWNERS"
 
           echo "Number of mandatory code owner approvals: $APPROVAL_COUNT"
           echo "Required mandatory approvals: $REQUIRED_APPROVALS"
@@ -71,12 +79,12 @@ jobs:
             echo "All mandatory code owners have approved the PR. PR can be merged."
           fi
 
-      # Step 4: Optional Approvals Check (if needed)
+      # Step 4: Optional approvals check (if needed)
       - name: Optional Approvals Check (optional reviewers)
         if: success()  # Only run this step if code owner approvals passed
         run: |
           echo "Optional reviewers can approve, but this step doesn't block the merge."
-
+      
       # Step 5: Approvals Check Passed
       - name: Approvals Check Passed
         if: success()
