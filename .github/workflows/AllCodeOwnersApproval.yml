@@ -23,14 +23,14 @@ jobs:
             "https://api.github.com/repos/$OWNER/$REPO/contents/$FILE_PATH")
           CONTENT=$(echo "$RESPONSE" | jq -r '.content' | base64 --decode)
           echo "CODEOWNERS content: $CONTENT"
-          echo "$CONTENT" > codeowners.txt  # Write content to a file
+          echo "::set-output name=content::$CONTENT"
 
       # Step 3: Check approvals from mandatory Code Owners
       - name: Check Approvals from Code Owners
         id: check-approvals
         run: |
-          # Extract mandatory users from CODEOWNERS file, removing extra spaces and newlines
-          CODEOWNERS=($(cat codeowners.txt | grep -o '@[^ ]*' | sed 's/@//g' | tr -d '[:space:]'))
+          # Extract mandatory users from CODEOWNERS file and trim whitespace
+          CODEOWNERS=($(echo "${{ steps.get-codeowners.outputs.content }}" | grep -o '@[^ ]*' | sed 's/@//g' | tr -d '[:space:]'))
           echo "CODEOWNERS list: ${CODEOWNERS[@]}"
 
           # Fetch the list of approved users from the GitHub API and trim whitespace
@@ -46,10 +46,13 @@ jobs:
 
           # Loop over code owners to check if they've approved
           for owner in "${CODEOWNERS[@]}"; do
-            owner=$(echo "$owner" | xargs)  # Trim any spaces/newlines
+            # Remove any leading/trailing whitespace from the owner name
+            owner=$(echo "$owner" | xargs)
             echo "Checking approval for code owner: '$owner'"
+            # Normalize approved users by trimming spaces/newlines
             NORMALIZED_APPROVED_USERS=$(echo "$APPROVED_USERS" | xargs)
             echo "Normalized approved users: '$NORMALIZED_APPROVED_USERS'"
+            # Check if the owner is in the list of approved users
             if echo "$NORMALIZED_APPROVED_USERS" | grep -iwq "$owner"; then
               ((APPROVAL_COUNT++))
               echo "'$owner' has approved."
