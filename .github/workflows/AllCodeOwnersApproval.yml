@@ -3,7 +3,9 @@ name: Ensure Mandatory Code Owners Approve
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  
+  # schedule:
+  #   - cron: '*/30 * * * *'  # Run every 30 minutes to check for approvals
+
 jobs:
   codeowners-approval:
     runs-on: ubuntu-latest
@@ -35,7 +37,8 @@ jobs:
       - name: Check Approvals from Code Owners
         id: check-approvals
         run: |
-          CODEOWNERS=($(echo "${{ steps.get-codeowners.outputs.content }}" | grep -o '@[^ ]*' | sed 's/@//g'))
+          # Extract mandatory users from CODEOWNERS file, removing extra spaces and newlines
+          CODEOWNERS=($(echo "${{ steps.get-codeowners.outputs.content }}" | grep -o '@[^ ]*' | sed 's/@//g' | tr -d '[:space:]'))
 
           # Debugging: Print CODEOWNERS list
           echo "CODEOWNERS list: ${CODEOWNERS[@]}"
@@ -43,16 +46,10 @@ jobs:
           # Fetch the list of approved users from the GitHub API
           APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
-          | jq -r '.[] | select(.state == "APPROVED") | .user.login')
+          | jq -r '.[] | select(.state == "APPROVED") | .user.login' | sort -u)
 
           # Debugging: Print raw APPROVED_USERS
-          echo "Raw Approved users: $APPROVED_USERS"
-
-          # Remove duplicates from APPROVED_USERS
-          UNIQUE_APPROVED_USERS=$(echo "$APPROVED_USERS" | sort | uniq)
-
-          # Debugging: Print UNIQUE_APPROVED_USERS
-          echo "Unique Approved users: $UNIQUE_APPROVED_USERS"
+          echo "Approved users: $APPROVED_USERS"
 
           # Initialize approval count for mandatory code owners
           APPROVAL_COUNT=0
@@ -63,8 +60,9 @@ jobs:
 
           # Loop over code owners to check if they've approved
           for owner in "${CODEOWNERS[@]}"; do
+            owner=$(echo "$owner" | tr -d '[:space:]')  # Trim any spaces
             echo "Checking approval for: $owner"
-            if echo "$UNIQUE_APPROVED_USERS" | grep -qw "$owner"; then
+            if echo "$APPROVED_USERS" | grep -iwq "$owner"; then  # Case-insensitive comparison
               ((APPROVAL_COUNT++))
               echo "$owner has approved"
             else
