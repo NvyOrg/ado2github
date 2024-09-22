@@ -27,56 +27,41 @@ jobs:
           RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/$OWNER/$REPO/contents/$FILE_PATH")
 
-          # Extract and decode the base64 content
-          CONTENT=$(echo "$RESPONSE" | jq -r '.content' | base64 --decode)
-
-          # Output the content to be used in later steps
-          echo "$CONTENT"
-          echo "::set-output name=content::$CONTENT"
-
-      # Step 3: Check approvals from mandatory Code Owners
-      - name: Check Approvals from Code Owners
-        id: check-approvals
-        run: |
           # Extract mandatory users from CODEOWNERS file
-          CODEOWNERS=($(echo "${{ steps.get-codeowners.outputs.content }}" | grep -o '@[^ ]*' | sed 's/@//g'))
-          echo "Print codeowners users from file: $CODEOWNERS"
-          # Fetch the list of approved users from GitHub API
-          APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
-          | jq -r '.[] | select(.state == "APPROVED") | .user.login')
+          CODEOWNERS=($(echo "* @vinodjyadav @rishabhvy" | grep -o '@[^ ]*' | sed 's/@//g'))
 
-          echo "Approved users: $APPROVED_USERS"
+          # Debugging: Print all codeowners correctly
+          echo "Print codeowners users from file: ${CODEOWNERS[@]}"
 
-          # Initialize approval count for mandatory code owners
-          APPROVAL_COUNT=0
-          REQUIRED_APPROVALS=${#CODEOWNERS[@]}  # Number of mandatory approvals
+         # Fetch the list of approved users from GitHub API
+        APPROVED_USERS=$(curl -s -H "Authorization: token ***" \
+        "https://api.github.com/repos/nitya-v-yadav/ado2github/pulls/11/reviews" \
+         | jq -r '.[] | select(.state == "APPROVED") | .user.login')
 
-          # Loop over code owners to check if they've approved
-          for owner in "${CODEOWNERS[@]}"; do
-            if echo "$APPROVED_USERS" | grep -qw "$owner"; then
-              ((APPROVAL_COUNT++))
-            fi
-          done
+        echo "Approved users: $APPROVED_USERS"
 
-          echo "Number of mandatory code owner approvals: $APPROVAL_COUNT"
-          echo "Required mandatory approvals: $REQUIRED_APPROVALS"
+       # Initialize approval count for mandatory code owners
+         APPROVAL_COUNT=0
+         REQUIRED_APPROVALS=${#CODEOWNERS[@]}  # Number of mandatory approvals
 
-          # Check if all mandatory code owners have approved
-          if [ "$APPROVAL_COUNT" -ne "$REQUIRED_APPROVALS" ]; then
-            echo "Not all mandatory code owners have approved. PR cannot be merged yet."
-            exit 1  # Fail the job to block the merge
-          else
-            echo "All mandatory code owners have approved the PR. PR can be merged."
-          fi
+      # Loop over code owners to check if they've approved
+        for owner in "${CODEOWNERS[@]}"; do
+        echo "Checking if $owner has approved..."
+        if echo "$APPROVED_USERS" | grep -qw "$owner"; then
+        ((APPROVAL_COUNT++))
+        echo "$owner has approved."
+        else
+        echo "$owner has NOT approved."
+        fi
+        done
 
-      # Step 4: Optional Approvals Check (if needed)
-      - name: Optional Approvals Check (optional reviewers)
-        if: success()  # Only run this step if code owner approvals passed
-        run: |
-          echo "Optional reviewers can approve, but this step doesn't block the merge."
+        echo "Number of mandatory code owner approvals: $APPROVAL_COUNT"
+        echo "Required mandatory approvals: $REQUIRED_APPROVALS"
 
-      # Step 5: Approvals Check Passed
-      - name: Approvals Check Passed
-        if: success()
-        run: echo "PR is ready to merge after all mandatory code owners' approval."
+       # Check if all mandatory code owners have approved
+       if [ "$APPROVAL_COUNT" -ne "$REQUIRED_APPROVALS" ]; then
+      echo "Not all mandatory code owners have approved. PR cannot be merged yet."
+      exit 1  # Fail the job to block the merge
+      else
+      echo "All mandatory code owners have approved the PR. PR can be merged."
+      fi
