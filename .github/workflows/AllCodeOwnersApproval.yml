@@ -1,4 +1,4 @@
-name: Ensure Code Owners Approve
+name: Ensure All Code Owners Approve
 
 on:
   pull_request:
@@ -11,38 +11,42 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Check Code Owners Approval
+      - name: Define Code Owners
         id: codeowners
         run: |
-          # Define the code owners
-          CODEOWNERS=("vinodjyadav" "rishabhvy") 
+          CODEOWNERS=("Vinod" "Rajesh")
+          echo "Code Owners: ${CODEOWNERS[@]}"
+          echo "::set-output name=codeowners::${CODEOWNERS[@]}"
 
-          # Get the list of approved users
+      - name: Check Approvals
+        id: approvals
+        run: |
+          # Get the list of users who approved the PR
           APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
           | jq -r '.[] | select(.state == "APPROVED") | .user.login')
 
+          echo "Approved users: $APPROVED_USERS"
+
           # Initialize approval count
           APPROVAL_COUNT=0
 
-          # Check if each code owner has approved
+          # Check if approvals come from all code owners
           for owner in "${CODEOWNERS[@]}"; do
             if echo "$APPROVED_USERS" | grep -qw "$owner"; then
               ((APPROVAL_COUNT++))
             fi
           done
 
-          echo "Number of required code owner approvals: $APPROVAL_COUNT"
+          echo "Number of code owner approvals: $APPROVAL_COUNT"
 
-          # Set the approval count as an output for the next step
-          echo "::set-output name=APPROVAL_COUNT::$APPROVAL_COUNT"
-
-      - name: Fail the PR if not approved by both code owners
-        if: steps.codeowners.outputs.APPROVAL_COUNT != '2'
-        run: |
-          echo "Not all required code owners have approved the PR."
-          exit 1
+          if [ "$APPROVAL_COUNT" -ne "${#CODEOWNERS[@]}" ]; then
+            echo "Not all code owners have approved. PR cannot be merged."
+            exit 1
+          else
+            echo "All code owners have approved the PR."
+          fi
 
       - name: Approvals Check Passed
-        if: steps.codeowners.outputs.APPROVAL_COUNT == '2'
-        run: echo "All required code owners have approved the PR."
+        if: success()
+        run: echo "PR is ready to merge after all code owners' approval."
