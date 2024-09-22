@@ -40,7 +40,7 @@ jobs:
           APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
           | jq -r '.[] | select(.state == "APPROVED") | .user.login' | sort -u)
-          echo "Approved users line40: $APPROVED_USERS"
+          # echo "Approved users line40: $APPROVED_USERS"
           
           # Convert the approved users into a space-separated string
           APPROVED_USERS_LIST=$(echo "$APPROVED_USERS" | tr '\n' ' ')
