@@ -79,17 +79,25 @@ jobs:
           APPROVAL_COUNT=0
           REQUIRED_APPROVALS=${#CODEOWNERS[@]}  # Number of mandatory approvals
           echo "Required mand approvals: $REQUIRED_APPROVALS"
+          
           # Loop over code owners to check if they've approved
-            for owner in "${CODEOWNERS[@]}"; do
-            echo "Checking if $owner has approved..."
-            if echo "$ORDERED_APPROVED_USERS" | grep -qw "$owner"; then
-            ((APPROVAL_COUNT++))
-            echo "$owner has approved."
-            else
-            echo "$owner has NOT approved."
-            fi
-            done
+           for owner in "${CODEOWNERS[@]}"; do
+           echo "Checking if $owner has approved..."
 
+           # Trim any possible surrounding spaces and normalize the comparison
+           owner=$(echo "$owner" | tr -d '[:space:]')
+           if echo "$ORDERED_APPROVED_USERS" | grep -qw "$owner"; then
+             ((APPROVAL_COUNT++))
+           echo "$owner has approved."
+           else
+           echo "$owner has NOT approved."
+           fi
+           done
+
+           # Debugging: Print final approval count
+            echo "Total approvals: $APPROVAL_COUNT"
+            echo "Required approvals: ${#CODEOWNERS[@]}"
+            
             echo "Number of mandatory code owner approvals: $APPROVAL_COUNT"
             echo "Required mandatory approvals: $REQUIRED_APPROVALS"
 
