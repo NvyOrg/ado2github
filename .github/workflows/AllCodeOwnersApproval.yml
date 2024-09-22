@@ -78,7 +78,7 @@ jobs:
           # Initialize approval count for mandatory code owners
           APPROVAL_COUNT=0
           REQUIRED_APPROVALS=${#CODEOWNERS[@]}  # Number of mandatory approvals
-
+          echo "Required mand approvals: $REQUIRED_APPROVALS"
           # Loop over code owners to check if they've approved
             for owner in "${CODEOWNERS[@]}"; do
             echo "Checking if $owner has approved..."
