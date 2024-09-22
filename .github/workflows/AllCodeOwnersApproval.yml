@@ -38,24 +38,27 @@ jobs:
         run: |
           # Extract mandatory users from CODEOWNERS file
           CODEOWNERS=($(echo "${{ steps.get-codeowners.outputs.content }}" | grep -o '@[^ ]*' | sed 's/@//g'))
-          
+
           # Debugging: Print CODEOWNERS list
           echo "CODEOWNERS list: ${CODEOWNERS[@]}"
 
           # Fetch the list of approved users from the GitHub API
           APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
-          | jq -r '.[] | select(.state == "APPROVED") | .user.login' | tr '\n' ' ' | xargs)
+          | jq -r '.[] | select(.state == "APPROVED") | .user.login')
 
-          # Debugging: Print the approved users
-          echo "Approved users (in CODEOWNERS order): '$APPROVED_USERS'"
+          # Convert approved users into an array
+          APPROVED_USERS_ARRAY=($(echo "$APPROVED_USERS" | tr '\n' ' '))
+
+          # Debugging: Print the approved users in array format
+          echo "Approved users (in array): ${APPROVED_USERS_ARRAY[@]}"
 
           # Initialize approval count for mandatory code owners
           APPROVAL_COUNT=0
           REQUIRED_APPROVALS=${#CODEOWNERS[@]}  # Number of mandatory approvals
           
           # Debugging: Print required approvals
-          echo "Required mand approvals: $REQUIRED_APPROVALS"
+          echo "Required mandatory approvals: $REQUIRED_APPROVALS"
 
           # Loop over code owners to check if they've approved
           for owner in "${CODEOWNERS[@]}"; do
@@ -63,13 +66,14 @@ jobs:
             owner=$(echo "$owner" | tr -d '[:space:]')
             echo "Checking if $owner has approved..."
 
-            # Compare normalized owner names with approved users
-            if echo "$APPROVED_USERS" | grep -qw "$owner"; then
-              ((APPROVAL_COUNT++))  # Increment approval count
-              echo "$owner has approved. Approval count is now $APPROVAL_COUNT."
-            else
-              echo "$owner has NOT approved."
-            fi
+            # Compare owner with each approved user in the array
+            for approved in "${APPROVED_USERS_ARRAY[@]}"; do
+              if [[ "$owner" == "$approved" ]]; then
+                ((APPROVAL_COUNT++))  # Increment approval count
+                echo "$owner has approved. Approval count is now $APPROVAL_COUNT."
+                break  # Exit the inner loop once approval is found
+              fi
+            done
           done
 
           # Debugging: Print approval count
