@@ -34,7 +34,7 @@ jobs:
         run: |
           # Extract mandatory users from CODEOWNERS file, removing extra spaces and newlines
           CODEOWNERS=($(echo "${{ steps.get-codeowners.outputs.content }}" | grep -o '@[^ ]*' | sed 's/@//g'))
-          echo "CODEOWNERS line36: $CODEOWNERS"
+          # echo "CODEOWNERS line36: $CODEOWNERS"
           
           # Fetch the list of approved users from the GitHub API
           APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
