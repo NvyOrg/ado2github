@@ -40,7 +40,7 @@ jobs:
         run: |
           # Extract mandatory users from CODEOWNERS file
           CODEOWNERS=($(echo "${{ steps.get-codeowners.outputs.content }}" | grep -o '@[^ ]*' | sed 's/@//g'))
-          echo " Print codeowners users: $CODEOWNERS"
+          echo "Print codeowners users from file: $CODEOWNERS"
           # Fetch the list of approved users from GitHub API
           APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
