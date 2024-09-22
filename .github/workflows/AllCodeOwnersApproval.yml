@@ -7,59 +7,67 @@ on:
 jobs:
   codeowners-approval:
     runs-on: ubuntu-latest
+
     steps:
       # Step 1: Checkout the code
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Step 2: Get Codeowners file content
-      - name: Get CODEOWNERS data
+      # Step 2: Get Codeowners data using Bash
+      - name: Get Codeowners data using Bash
         id: get-codeowners
         run: |
           OWNER=${{ github.repository_owner }}
           REPO=$(basename ${{ github.repository }})
           FILE_PATH=".github/CODEOWNERS"
-          # Make an API call to get the content of the CODEOWNERS file
+          
+          # Fetch the CODEOWNERS file content via the GitHub API
           RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/$OWNER/$REPO/contents/$FILE_PATH")
-          # Extract and decode the base64 content
           CONTENT=$(echo "$RESPONSE" | jq -r '.content' | base64 --decode)
           echo "::set-output name=content::$CONTENT"
-
-      # Step 3: Fetch list of approved users from the GitHub API
-      - name: Fetch approved users
+      
+      # Step 3: Fetch approvals from the GitHub API
+      - name: Fetch approvals from API
         id: fetch-approvals
         run: |
           APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
           | jq -r '.[] | select(.state == "APPROVED") | .user.login')
+          
           echo "::set-output name=approved_users::$APPROVED_USERS"
-      
-      # Step 4: Check if code owners have approved the PR
-      - name: Check Code Owners' Approvals
+
+      # Step 4: Check approvals from Code Owners
+      - name: Check Approvals from Code Owners
+        id: check-approvals
         run: |
-          # Extract mandatory users from CODEOWNERS file, removing extra spaces and newlines
+          # Step 1: Extract mandatory users from CODEOWNERS file
           CODEOWNERS=($(echo "${{ steps.get-codeowners.outputs.content }}" | grep -o '@[^ ]*' | sed 's/@//g'))
           echo "CODEOWNERS list: ${CODEOWNERS[@]}"
 
-          # Extract approved users from API response
-          APPROVED_USERS=($(echo "${{ steps.fetch-approvals.outputs.approved_users }}" | tr -d '[:space:]'))
-          echo "Approved users: ${APPROVED_USERS[@]}"
+          # Step 2: Extract approved users without removing spaces between names
+          APPROVED_USERS=$(echo "${{ steps.fetch-approvals.outputs.approved_users }}" | tr -s '[:space:]')
+          
+          # Step 3: Split approved users into an array
+          readarray -t APPROVED_USERS_ARRAY <<<"$APPROVED_USERS"
 
-          # Initialize approval count
-          APPROVAL_COUNT=0
-          REQUIRED_APPROVALS=${#CODEOWNERS[@]}  # Number of mandatory approvals
-
-          # Use associative array for O(1) lookup of approved users
-          declare -A approved_map
-          for approved_user in "${APPROVED_USERS[@]}"; do
-            approved_map["$approved_user"]=1
+          # Debugging: Print each approved user
+          echo "Approved users (in CODEOWNERS order):"
+          for user in "${APPROVED_USERS_ARRAY[@]}"; do
+            echo "$user"
           done
 
-          # Compare code owners with approved users
+          # Step 4: Initialize approval count and required approvals
+          APPROVAL_COUNT=0
+          REQUIRED_APPROVALS=${#CODEOWNERS[@]}
+          echo "Required mandatory approvals: $REQUIRED_APPROVALS"
+
+          # Step 5: Loop over code owners to check if they've approved
           for owner in "${CODEOWNERS[@]}"; do
             echo "Checking if $owner has approved..."
-            if [[ ${approved_map[$owner]} ]]; then
+            
+            # Compare normalized owner names with approved users
+            if printf '%s\n' "${APPROVED_USERS_ARRAY[@]}" | grep -qw "$owner"; then
               ((APPROVAL_COUNT++))  # Increment approval count
               echo "$owner has approved. Approval count is now $APPROVAL_COUNT."
             else
@@ -67,8 +75,8 @@ jobs:
             fi
           done
 
+          # Debugging: Print approval count
           echo "Number of mandatory code owner approvals: $APPROVAL_COUNT"
-          echo "Required mandatory approvals: $REQUIRED_APPROVALS"
 
           # Check if all mandatory code owners have approved
           if [ "$APPROVAL_COUNT" -lt "$REQUIRED_APPROVALS" ]; then
