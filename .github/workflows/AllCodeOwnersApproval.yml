@@ -74,38 +74,41 @@ jobs:
 
             # Print approved users in the same order as CODEOWNERS
               echo "Approved users (in CODEOWNERS order): $ORDERED_APPROVED_USERS"
-              
-          # Initialize approval count for mandatory code owners
-          APPROVAL_COUNT=0
-          REQUIRED_APPROVALS=${#CODEOWNERS[@]}  # Number of mandatory approvals
-          echo "Required mand approvals: $REQUIRED_APPROVALS"
+
+              # Check if both arrays are correctly populated
+              if [ -z "$ORDERED_APPROVED_USERS" ]; then
+              echo "Error: ORDERED_APPROVED_USERS is empty."
+              exit 1
+              fi
+
+             if [ ${#CODEOWNERS[@]} -eq 0 ]; then
+             echo "Error: CODEOWNERS array is empty."
+             exit 1
+             fi
+
+           # Loop over code owners to check if they've approved
+             for owner in "${CODEOWNERS[@]}"; do
+          # Trim any whitespace or newlines from the owner name
+            owner=$(echo "$owner" | tr -d '[:space:]')
+  
+            echo "Checking if $owner has approved..."
+
+          # Normalize approved users list (remove spaces/newlines) for comparison
+          if echo "$ORDERED_APPROVED_USERS" | tr -d '[:space:]' | grep -qw "$owner"; then
+          ((APPROVAL_COUNT++))
+          echo "$owner has approved."
+          else
+          echo "$owner has NOT approved."
+          fi
+          done
           
-          # Loop over code owners to check if they've approved
-           for owner in "${CODEOWNERS[@]}"; do
-           echo "Checking if $owner has approved..."
-
-           # Trim any possible surrounding spaces and normalize the comparison
-           owner=$(echo "$owner" | tr -d '[:space:]')
-           if echo "$ORDERED_APPROVED_USERS" | grep -qw "$owner"; then
-             ((APPROVAL_COUNT++))
-           echo "$owner has approved."
-           else
-           echo "$owner has NOT approved."
-           fi
-           done
-
-           # Debugging: Print final approval count
-            echo "Total approvals: $APPROVAL_COUNT"
-            echo "Required approvals: ${#CODEOWNERS[@]}"
-            
+           # Debug: Check the final approval count
             echo "Number of mandatory code owner approvals: $APPROVAL_COUNT"
-            echo "Required mandatory approvals: $REQUIRED_APPROVALS"
-
-           # Check if all mandatory code owners have approved
-           if [ "$APPROVAL_COUNT" -ne "$REQUIRED_APPROVALS" ]; then
-           echo "Not all mandatory code owners have approved. PR cannot be merged yet."
-           exit 1  # Fail the job to block the merge
-           else
-           echo "All mandatory code owners have approved the PR. PR can be merged."
-           fi
-           
+            echo "Required mandatory approvals: ${#CODEOWNERS[@]}"
+            # Check if all mandatory code owners have approved
+            if [ "$APPROVAL_COUNT" -ne "${#CODEOWNERS[@]}" ]; then
+            echo "Not all mandatory code owners have approved. PR cannot be merged yet."
+            exit 1
+            else
+            echo "All mandatory code owners have approved the PR. PR can be merged."
+            fi
