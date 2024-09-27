@@ -53,7 +53,7 @@ jobs:
           # Loop over code owners to check if they've approved
           for owner in "${CODEOWNERS[@]}"; do
             if echo $APPROVED_USERS | grep -qw $owner; then
-            APPROVAL_COUNT=$((APPROVAL_COUNT+1))
+            APPROVAL_COUNT=$(APPROVAL_COUNT+1)
             fi
           done
 
