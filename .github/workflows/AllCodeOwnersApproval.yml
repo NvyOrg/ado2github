@@ -3,9 +3,7 @@ name: Ensure Mandatory Code Owners Approve
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  schedule:
-    - cron: '*/30 * * * *'  # Run every 30 minutes to check for approvals
-
+  
 jobs:
   codeowners-approval:
     runs-on: ubuntu-latest
@@ -54,8 +52,8 @@ jobs:
 
           # Loop over code owners to check if they've approved
           for owner in "${CODEOWNERS[@]}"; do
-            if echo "$APPROVED_USERS" | grep -qw "$owner"; then
-              ((APPROVAL_COUNT++))
+            if echo $APPROVED_USERS | grep -qw $owner; then
+            APPROVAL_COUNT=$((APPROVAL_COUNT+1))
             fi
           done
 
