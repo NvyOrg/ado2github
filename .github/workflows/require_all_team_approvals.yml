@@ -1,0 +1,22 @@
+name: Require All Team Members Approval
+
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  check-approvals:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Run Approval Check
+        run: |
+          chmod +x scripts/check-approvals.sh
+          ./scripts/check-approvals.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEAM_SLUG: "codeownteam"    # The slug of your team
+          ORG_NAME: "NvyOrg"          # Your organization name
