@@ -1,22 +1,89 @@
-name: Require All Team Members Approval
+name: Ensure Team Code Owners Approve
 
 on:
   pull_request:
-    branches:
-      - master
+    types: [opened, synchronize, reopened]
 
 jobs:
-  check-approvals:
+  codeowners-approval:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      # Step 1: Checkout the code
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Run Approval Check
+      # Step 2: Get Codeowners data using Bash
+      - name: Get Codeowners data
+        id: get-codeowners
         run: |
-          chmod +x scripts/check-approvals.sh
-          ./scripts/check-approvals.sh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TEAM_SLUG: "codeownteam"    # The slug of your team
-          ORG_NAME: "NvyOrg"          # Your organization name
+          OWNER=${{ github.repository_owner }}
+          REPO=$(basename ${{ github.repository }})
+          FILE_PATH=".github/CODEOWNERS"
+          # Fetch CODEOWNERS file content
+          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/$OWNER/$REPO/contents/$FILE_PATH")
+          # Decode the base64 content and find the teams (lines with `@org/teamname`)
+          CONTENT=$(echo "$RESPONSE" | jq -r '.content' | base64 --decode)
+          TEAMS=$(echo "$CONTENT" | grep -o '@[^/]\+/\S\+' | sed 's/@//g')
+          # Debugging: Print teams
+          echo "Teams listed in CODEOWNERS: $TEAMS"
+          echo "::set-output name=teams::$TEAMS"
+
+      # Step 3: Fetch team members using GitHub API
+      - name: Fetch team members
+        id: fetch-team-members
+        run: |
+          TEAM_MEMBERS=""
+          for team in ${{ steps.get-codeowners.outputs.teams }}; do
+            ORG=$(echo "$team" | cut -d'/' -f1)
+            TEAM_SLUG=$(echo "$team" | cut -d'/' -f2)
+            TEAM_API_URL="https://api.github.com/orgs/$ORG/teams/$TEAM_SLUG/members"
+            # Fetch members of the team
+            MEMBERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$TEAM_API_URL" | jq -r '.[].login')
+            TEAM_MEMBERS="$TEAM_MEMBERS $MEMBERS"
+          done
+          # Store the members in an output
+          echo "Team members: $TEAM_MEMBERS"
+          echo "::set-output name=team_members::$TEAM_MEMBERS"
+
+      # Step 4: Fetch the approved users for the pull request
+      - name: Fetch approved users
+        id: fetch-approvals
+        run: |
+          APPROVED_USERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
+            | jq -r '.[] | select(.state == "APPROVED") | .user.login' | sort -u)
+          echo "Approved users: $APPROVED_USERS"
+          echo "::set-output name=approved_users::$APPROVED_USERS"
+
+      # Step 5: Compare team members and approved users
+      - name: Check if all team members have approved
+        run: |
+          TEAM_MEMBERS=(${{ steps.fetch-team-members.outputs.team_members }})
+          APPROVED_USERS=(${{ steps.fetch-approvals.outputs.approved_users }})
+
+          # Initialize approval count
+          APPROVAL_COUNT=0
+          REQUIRED_APPROVALS=${#TEAM_MEMBERS[@]}
+
+          # Compare team members with approved users
+          for member in "${TEAM_MEMBERS[@]}"; do
+            if echo "${APPROVED_USERS[@]}" | grep -qw "$member"; then
+              ((APPROVAL_COUNT++))
+              echo "$member has approved."
+            else
+              echo "$member has NOT approved."
+            fi
+          done
+
+          # Debugging: Print approval count
+          echo "Number of mandatory approvals: $APPROVAL_COUNT"
+          echo "Required approvals: $REQUIRED_APPROVALS"
+
+          # Check if all team members have approved
+          if [ "$APPROVAL_COUNT" -lt "$REQUIRED_APPROVALS" ]; then
+            echo "Not all team members have approved. PR cannot be merged yet."
+            exit 1  # Fail the job to block the merge
+          else
+            echo "All team members have approved the PR. PR can be merged."
+          fi
