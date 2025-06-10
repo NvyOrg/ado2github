@@ -1,0 +1,99 @@
+name: Generate Merged PR Report (PowerShell)
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch to report merged PRs for (e.g., feature/NextPatch205)'
+        required: true
+        default: 'main'
+  schedule:
+    - cron: '0 0 * * 1'  # Runs every Monday at midnight UTC
+
+jobs:
+  generate-pr-report:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install ImportExcel module
+      shell: powershell
+      run: |
+        Install-Module -Name ImportExcel -Force -AllowClobber -Scope CurrentUser
+        Import-Module ImportExcel
+
+    - name: Generate PR Report
+      shell: powershell
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        $Repo = "${{ github.repository }}"
+        $Branch = "${{ inputs.target_branch }}"
+        $DateString = Get-Date -Format "yyyyMMdd_HHmmss"
+        $SafeBranch = $Branch -replace "/", "_"
+        $OutputFile = "merged_prs_${SafeBranch}_${DateString}.xlsx"
+
+        Write-Host "Fetching merged PRs for $Branch branch in repository $Repo"
+
+        # Authenticate with GitHub CLI
+        gh auth login --with-token <<< "$env:GITHUB_TOKEN"
+
+        # Get merged PRs with all available fields
+        $PRs = gh pr list `
+          --repo $Repo `
+          --base $Branch `
+          --state merged `
+          --json number,title,author,createdAt,mergedAt,mergeCommit,url,additions,deletions,changedFiles,comments,labels,reviewRequests,reviews | 
+          ConvertFrom-Json
+
+        if ($PRs.Count -eq 0) {
+          Write-Host "No merged PRs found for branch $Branch"
+          exit 0
+        }
+
+        # Prepare detailed data for Excel
+        $ExcelData = foreach ($PR in $PRs) {
+          [PSCustomObject]@{
+            "PR Number"     = $PR.number
+            "Title"         = $PR.title
+            "Author"        = $PR.author.login
+            "Created At"    = $PR.createdAt
+            "Merged At"     = $PR.mergedAt
+            "Merge Commit"  = $PR.mergeCommit.oid
+            "Additions"     = $PR.additions
+            "Deletions"     = $PR.deletions
+            "Changed Files" = $PR.changedFiles
+            "Comments"      = $PR.comments.totalCount
+            "Labels"       = ($PR.labels.name -join ", ")
+            "Reviewers"     = ($PR.reviewRequests.requestedReviewer.login -join ", ")
+            "Approvals"     = ($PR.reviews | Where-Object { $_.state -eq "APPROVED" } | 
+                              Select-Object -ExpandProperty author | 
+                              Select-Object -ExpandProperty login -join ", ")
+            "URL"           = $PR.url
+          }
+        }
+
+        # Export to Excel with formatting
+        $ExcelParams = @{
+          Path          = $OutputFile
+          AutoSize      = $true
+          FreezeTopRow  = $true
+          BoldTopRow    = $true
+          WorksheetName = "Merged PRs"
+          TableStyle    = "Medium6"
+        }
+
+        $ExcelData | Export-Excel @ExcelParams
+
+        Write-Host "Report generated: $OutputFile"
+        
+        # Set output for artifact upload
+        echo "report_file=$OutputFile" >> $env:GITHUB_OUTPUT
+        echo "report_generated=true" >> $env:GITHUB_OUTPUT
+
+    - name: Upload PR Report
+      if: steps.generate-pr-report.outputs.report_generated == 'true'
+      uses: actions/upload-artifact@v3
+      with:
+        name: merged-pr-report-${{ inputs.target_branch || 'main' }}
+        path: ${{ steps.generate-pr-report.outputs.report_file }}
