@@ -5,7 +5,7 @@ on:
       target_branch:
         description: 'Branch to report merged PRs for (e.g., feature/NextPatch205)'
         required: true
-        default: 'main'
+        default: 'master'
   schedule:
     - cron: '0 0 * * 1'  # Runs every Monday at midnight UTC
 
